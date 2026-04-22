@@ -1,0 +1,13 @@
+- name: Configure Redis
+  hosts: 192.168.1.103 # Update to your actual Redis IP
+  become: yes
+  tasks:
+    - name: Ensure redis is installed
+      apt:
+        name: redis-server
+        state: present
+    - name: Ensure Redis is running
+      systemd:
+        name: redis-server
+        state: started
+        enabled: yes

@@ -1,0 +1,8 @@
+services:
+  tf-ansible:
+    build: .
+    volumes:
+      - .:/infra
+      - ~/.ssh:/root/.ssh:ro
+    env_file:
+      - .env
