@@ -1,5 +1,5 @@
 - name: Configure Redis
-  hosts: 192.168.0.231 # Update to your actual Redis IP
+  hosts: redis_nodes
   become: yes
   tasks:
     - name: Ensure redis is installed
@@ -9,5 +9,15 @@
     - name: Ensure Redis is running
       systemd:
         name: redis-server
+        state: started
+        enabled: yes
+
+- name: Configure Grafana (CT105)
+  hosts: grafana_nodes
+  become: yes
+  tasks:
+    - name: Ensure Grafana service is running
+      systemd:
+        name: grafana-server
         state: started
         enabled: yes
