@@ -6,6 +6,13 @@ resource "proxmox_virtual_environment_container" "cloudflare_ddns" {
 
   initialization {
     hostname = "cloudflare-ddns"
+
+    ip_config {
+      ipv4 {
+        address = "192.168.0.173/24"
+        gateway = "192.168.0.1"
+      }
+    }
   }
 
   operating_system {

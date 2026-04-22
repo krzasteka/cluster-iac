@@ -1,0 +1,378 @@
+---
+# =============================================================================
+# backup.yaml — Application-level backup for all managed LXC containers
+#
+# Run via:   ./backup.sh
+# Or manually:
+#   docker compose run --rm tf-ansible \
+#     ansible-playbook backup.yaml -e "backup_ts=$(date +%Y%m%d-%H%M%S)"
+#
+# Backups land in:  ./backups/<timestamp>/<hostname>.tar.gz
+# on this machine (inside the /infra bind-mount = repo root).
+# =============================================================================
+
+# ── 0. Redis ──────────────────────────────────────────────────────────────────
+# RDB snapshot — trigger a foreground save then pull the dump file.
+- name: Backup Redis
+  hosts: redis_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Trigger Redis BGSAVE and wait
+      shell: redis-cli BGSAVE && sleep 3
+
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive Redis RDB
+      shell: tar czf {{ dst }}/redis-data.tar.gz /var/lib/redis/dump.rdb 2>/dev/null || true
+
+    - name: Bundle all archives into one
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 1. Grafana ────────────────────────────────────────────────────────────────
+# /var/lib/grafana/ contains grafana.db (SQLite with all dashboards,
+# datasources, users, alerts) plus provisioning and plugins.
+- name: Backup Grafana
+  hosts: grafana_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive Grafana data directory
+      shell: tar czf {{ dst }}/grafana-data.tar.gz /var/lib/grafana/ 2>/dev/null || true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 2. Pi-hole ────────────────────────────────────────────────────────────────
+# /etc/pihole/     — pihole.toml, gravity.db (blocklists), custom.list (local DNS)
+# /etc/dnsmasq.d/  — custom DNS server overrides
+- name: Backup Pi-hole
+  hosts: pihole_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive Pi-hole config
+      shell: tar czf {{ dst }}/pihole-config.tar.gz /etc/pihole/ /etc/dnsmasq.d/ 2>/dev/null || true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 3. Nginx Proxy Manager ────────────────────────────────────────────────────
+# /data/           — database.sqlite (all proxy hosts, redirects, streams),
+#                    custom_ssl/ (uploaded certs), access/ (access lists)
+# /etc/letsencrypt — Let's Encrypt certificates
+# /app/config/     — production.json (DB engine config)
+- name: Backup Nginx Proxy Manager
+  hosts: nginxproxymanager_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive NPM data and certs
+      shell: >
+        tar czf {{ dst }}/npm-data.tar.gz
+        /data/database.sqlite
+        /data/custom_ssl/
+        /data/access/
+        /app/config/production.json
+        /etc/letsencrypt/
+        2>/dev/null || true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 4. Prometheus ─────────────────────────────────────────────────────────────
+# /etc/prometheus/ — prometheus.yml (scrape config) + any alert rules
+# Note: /var/lib/prometheus/ (TSDB) is metrics history — large and ephemeral,
+#       excluded by default. Uncomment to include if you need historical data.
+- name: Backup Prometheus
+  hosts: prometheus_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive Prometheus config
+      shell: >
+        tar czf {{ dst }}/prometheus-config.tar.gz
+        /etc/prometheus/
+        2>/dev/null || true
+        # Uncomment to also back up TSDB (can be GBs):
+        # /var/lib/prometheus/
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 5. Uptime Kuma ────────────────────────────────────────────────────────────
+# /opt/uptime-kuma/data/ — kuma.db (SQLite: all monitors, status pages,
+#                           notifications, heartbeat history)
+- name: Backup Uptime Kuma
+  hosts: uptimekuma_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive Uptime Kuma data
+      shell: tar czf {{ dst }}/uptimekuma-data.tar.gz /opt/uptime-kuma/data/ 2>/dev/null || true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 6. n8n ────────────────────────────────────────────────────────────────────
+# /root/.n8n/    — SQLite DB with workflows, credentials (encrypted), executions
+# /opt/n8n.env   — service environment (port, host, etc.)
+- name: Backup n8n
+  hosts: n8n_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Archive n8n data and env
+      shell: >
+        tar czf {{ dst }}/n8n-data.tar.gz
+        /root/.n8n/
+        /opt/n8n.env
+        2>/dev/null || true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 7. Invoice Ninja ──────────────────────────────────────────────────────────
+# MariaDB dump (DB: invoiceninja) — invoices, clients, payments, all records
+# /opt/invoiceninja/.env        — APP_KEY (required to decrypt data), DB creds
+# /opt/invoiceninja/storage/    — uploaded files, generated PDFs
+- name: Backup Invoice Ninja
+  hosts: invoiceninja_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Dump MariaDB invoiceninja database
+      shell: >
+        mysqldump
+        --single-transaction
+        --routines
+        --triggers
+        invoiceninja > {{ dst }}/invoiceninja-db.sql
+      no_log: true
+
+    - name: Archive .env and storage
+      shell: >
+        tar czf {{ dst }}/invoiceninja-files.tar.gz
+        /opt/invoiceninja/.env
+        /opt/invoiceninja/storage/
+        2>/dev/null || true
+
+    - name: Bundle all into one archive
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 8. Prometheus PVE Exporter ────────────────────────────────────────────────
+# Config file with Proxmox credentials — typically /etc/pve.yml or
+# /opt/prometheus-pve-exporter/pve.yml
+- name: Backup Prometheus PVE Exporter
+  hosts: prometheus_pve_exporter_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Find PVE exporter config file
+      shell: find /etc /opt -name 'pve.yml' -o -name 'pve.yaml' 2>/dev/null | head -5
+      register: pve_config_files
+      changed_when: false
+
+    - name: Archive PVE exporter config
+      shell: >
+        tar czf {{ dst }}/pve-exporter-config.tar.gz
+        {{ pve_config_files.stdout_lines | join(' ') }}
+        2>/dev/null || true
+      when: pve_config_files.stdout_lines | length > 0
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 9. Cloudflare DDNS ───────────────────────────────────────────────────────
+# Config holds API token + zone + record — required to restore DDNS function
+- name: Backup Cloudflare DDNS config
+  hosts: cloudflare_ddns_nodes
+  become: yes
+  vars:
+    dst: /tmp/dr-backup
+  tasks:
+    - name: Create staging dir
+      file: path={{ dst }} state=directory mode=0700
+
+    - name: Find Cloudflare DDNS config
+      shell: find /etc /opt /root -name '*cloudflare*' -type f 2>/dev/null | head -10
+      register: cf_config_files
+      changed_when: false
+
+    - name: Archive Cloudflare DDNS config
+      shell: >
+        tar czf {{ dst }}/cloudflare-ddns-config.tar.gz
+        {{ cf_config_files.stdout_lines | join(' ') }}
+        2>/dev/null || true
+      when: cf_config_files.stdout_lines | length > 0
+      no_log: true
+
+    - name: Bundle
+      shell: tar czf /tmp/dr-backup.tar.gz -C {{ dst }} .
+
+    - name: Fetch to local machine
+      fetch:
+        src: /tmp/dr-backup.tar.gz
+        dest: "backups/{{ backup_ts }}/{{ inventory_hostname }}.tar.gz"
+        flat: yes
+
+    - name: Cleanup staging
+      file: path={{ item }} state=absent
+      loop:
+        - "{{ dst }}"
+        - /tmp/dr-backup.tar.gz
+
+# ── 10. Summary ───────────────────────────────────────────────────────────────
+- name: Print backup summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Show backup location
+      debug:
+        msg: >-
+          Backup complete. Archives saved to:
+          ./backups/{{ backup_ts }}/
+          Each file is <hostname>.tar.gz — restore by extracting on the
+          target container: tar xzf <hostname>.tar.gz -C /

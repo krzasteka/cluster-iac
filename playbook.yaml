@@ -1,23 +1,256 @@
-- name: Configure Redis
+---
+# ═══════════════════════════════════════════════════════════════════════════════
+# Disaster-Recovery Playbook
+# Run after: terraform apply
+# Purpose : idempotently (re)install every managed service inside each LXC.
+# All community-script tasks use `creates:` guards — safe to re-run on live
+# containers (skipped if the app binary/directory already exists).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── 0. Bootstrap – wait for SSH and ensure curl is present ────────────────────
+- name: Bootstrap all containers
+  hosts: all_containers
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Wait for SSH to become available
+      wait_for_connection:
+        delay: 5
+        timeout: 120
+
+    - name: Gather facts
+      setup:
+
+    - name: Ensure curl and ca-certificates are installed
+      apt:
+        name:
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: yes
+
+# ── 1. Redis ──────────────────────────────────────────────────────────────────
+- name: Install and configure Redis
   hosts: redis_nodes
   become: yes
   tasks:
-    - name: Ensure redis is installed
+    - name: Install redis-server
       apt:
         name: redis-server
         state: present
-    - name: Ensure Redis is running
+
+    - name: Ensure Redis is started and enabled
       systemd:
         name: redis-server
         state: started
         enabled: yes
 
-- name: Configure Grafana (CT105)
+# ── 2. Grafana ────────────────────────────────────────────────────────────────
+- name: Install and configure Grafana
   hosts: grafana_nodes
   become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
   tasks:
-    - name: Ensure Grafana service is running
+    - name: Install Grafana via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/grafana-install.sh)
+      args:
+        creates: /usr/sbin/grafana-server
+
+    - name: Ensure Grafana is started and enabled
       systemd:
         name: grafana-server
         state: started
         enabled: yes
+        daemon_reload: yes
+
+# ── 3. Pi-hole ────────────────────────────────────────────────────────────────
+- name: Install and configure Pi-hole
+  hosts: pihole_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Pi-hole via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/pihole-install.sh)
+      args:
+        creates: /usr/local/bin/pihole
+
+    - name: Ensure Pi-hole FTL service is started and enabled
+      systemd:
+        name: pihole-FTL
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 4. Nginx Proxy Manager ────────────────────────────────────────────────────
+- name: Install and configure Nginx Proxy Manager
+  hosts: nginxproxymanager_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Nginx Proxy Manager via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/nginxproxymanager-install.sh)
+      args:
+        creates: /opt/nginxproxymanager
+
+    - name: Ensure NPM service is started and enabled
+      systemd:
+        name: npm
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 5. Docker Engine ──────────────────────────────────────────────────────────
+- name: Install and configure Docker Engine
+  hosts: docker_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Docker via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/docker-install.sh)
+      args:
+        creates: /usr/bin/docker
+
+    - name: Ensure Docker service is started and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+# ── 6. Prometheus ─────────────────────────────────────────────────────────────
+- name: Install and configure Prometheus
+  hosts: prometheus_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Prometheus via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/prometheus-install.sh)
+      args:
+        creates: /usr/local/bin/prometheus
+
+    - name: Ensure Prometheus service is started and enabled
+      systemd:
+        name: prometheus
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 7. Uptime Kuma ────────────────────────────────────────────────────────────
+- name: Install and configure Uptime Kuma
+  hosts: uptimekuma_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Uptime Kuma via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/uptimekuma-install.sh)
+      args:
+        creates: /opt/uptime-kuma
+
+    - name: Ensure Uptime Kuma service is started and enabled
+      systemd:
+        name: uptimekuma
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 8. n8n ────────────────────────────────────────────────────────────────────
+- name: Install and configure n8n
+  hosts: n8n_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install n8n via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/n8n-install.sh)
+      args:
+        creates: /opt/n8n
+
+    - name: Ensure n8n service is started and enabled
+      systemd:
+        name: n8n
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 9. Invoice Ninja ──────────────────────────────────────────────────────────
+- name: Install and configure Invoice Ninja
+  hosts: invoiceninja_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Invoice Ninja via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/invoiceninja-install.sh)
+      args:
+        creates: /var/www/html/invoiceninja
+
+    - name: Ensure Nginx web server is started and enabled
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+# ── 10. Prometheus PVE Exporter ───────────────────────────────────────────────
+- name: Install and configure Prometheus PVE Exporter
+  hosts: prometheus_pve_exporter_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Prometheus PVE Exporter via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/prometheus-pve-exporter-install.sh)
+      args:
+        creates: /opt/prometheus-pve-exporter
+
+    - name: Ensure PVE Exporter service is started and enabled
+      systemd:
+        name: prometheus-pve-exporter
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 11. Cloudflare DDNS ───────────────────────────────────────────────────────
+- name: Install and configure Cloudflare DDNS
+  hosts: cloudflare_ddns_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install Cloudflare DDNS via community script
+      shell: |
+        bash <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/cloudflare-ddns-install.sh)
+      args:
+        creates: /usr/local/bin/cloudflare-ddns
+
+    - name: Ensure Cloudflare DDNS service is started and enabled
+      systemd:
+        name: cloudflare-ddns
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+# ── 12. Ops Controller (custom app — manual DR step) ─────────────────────────
+- name: DR notice – ops-controller requires manual restore
+  hosts: ops_controller_nodes
+  gather_facts: no
+  tasks:
+    - name: Print manual DR instructions
+      debug:
+        msg: >-
+          ops-controller (ct900 @ 192.168.0.230) is a custom service.
+          SSH in and restore from your application repo or backup.
+          Codify the install steps into a task here once known.
