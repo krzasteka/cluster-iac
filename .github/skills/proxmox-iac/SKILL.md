@@ -1,6 +1,6 @@
 ---
 name: proxmox-iac
-description: "Provision and manage Proxmox LXC containers using Terraform and Ansible in this homelab IaC repo. Use when: adding a new LXC, deploying a new app container, applying infrastructure changes, running Terraform plan/apply, running Ansible playbook, cloning CT113 for a React/Vite/Tailwind app, modifying .tf files, or performing day-2 infra maintenance. All commands run through the Docker tf-ansible service."
+description: "Provision and manage Proxmox LXC containers using Terraform and Ansible in this homelab IaC repo. Use when: adding a new LXC, deploying a new app container, applying infrastructure changes, decommissioning or deleting an LXC, running Terraform plan/apply, running Ansible playbook, cloning CT113 for a React/Vite/Tailwind app, modifying .tf files, or performing day-2 infra maintenance. All commands run through the Docker tf-ansible service."
 argument-hint: "Name of new LXC/app or describe the infra change"
 ---
 
@@ -178,6 +178,37 @@ docker compose run --rm tf-ansible terraform plan -destroy -out=tfdestroy
 docker compose run --rm tf-ansible terraform apply tfdestroy
 ```
 
+### Decommissioning an LXC Safely
+
+Use this workflow when removing a container from Terraform, especially if a direct destroy times out while the container is running.
+
+1. Remove the final `.tf` definition only after the container has actually been destroyed.
+2. If the container is healthy, a normal reviewed destroy plan is fine.
+3. If `terraform apply` fails during delete with a Proxmox `status/current` timeout, temporarily reintroduce the resource definition and manage the container explicitly.
+4. Set `started = false` on the resource and use a generous `timeout_delete` such as `600`.
+5. Avoid `lifecycle { ignore_changes = all }` during this recovery step because it suppresses the `started = false` diff.
+6. Import the live container back into state:
+   ```bash
+   docker compose run --rm tf-ansible terraform import proxmox_virtual_environment_container.<slug> <node>/<vmid>
+   ```
+7. Generate and apply a reviewed plan that only stops the container:
+   ```bash
+   docker compose run --rm tf-ansible terraform plan -out=tfplan-stop -target=proxmox_virtual_environment_container.<slug>
+   docker compose run --rm tf-ansible terraform apply tfplan-stop
+   ```
+8. Confirm Terraform now sees `started = false` in state.
+9. Generate and apply a reviewed destroy plan for that stopped container:
+   ```bash
+   docker compose run --rm tf-ansible terraform plan -destroy -out=tfdestroy -target=proxmox_virtual_environment_container.<slug>
+   docker compose run --rm tf-ansible terraform apply tfdestroy
+   ```
+10. After successful destroy, remove the temporary `.tf` file and verify a clean plan.
+
+Observed repo-specific lesson:
+
+- `gemini-bridge` deleted successfully only after a Terraform-managed stop (`started = false`) followed by a Terraform destroy.
+- `optmovementpt` remained stuck at the Proxmox side even after retrying deletes; in that state, Terraform cleanup may require a Proxmox-side remediation before destroy can succeed.
+
 ---
 
 ## Pre-Merge Checklist
@@ -196,7 +227,7 @@ Before committing any infra change:
 
 ## Reference Files
 
-- [redis.tf](../../redis.tf) — Reference LXC Terraform pattern
-- [playbook.yaml](../../playbook.yaml) — Ansible configuration playbook
-- [docker-compose.yaml](../../docker-compose.yaml) — tf-ansible service definition
-- [Dockerfile](../../Dockerfile) — Toolchain image
+- [redis.tf](../../../redis.tf) — Reference LXC Terraform pattern
+- [playbook.yaml](../../../playbook.yaml) — Ansible configuration playbook
+- [docker-compose.yaml](../../../docker-compose.yaml) — tf-ansible service definition
+- [Dockerfile](../../../Dockerfile) — Toolchain image
