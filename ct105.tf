@@ -1,12 +1,13 @@
-resource "proxmox_virtual_environment_container" "redis" {
-  node_name   = "node1"
-  description = <<-EOT
+resource "proxmox_virtual_environment_container" "ct105" {
+  node_name    = "node1"
+  vm_id        = 105
+  description  = <<-EOT
           <div align='center'>
             <a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'>
               <img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo' style='width:81px;height:112px;'/>
             </a>
 
-            <h2 style='font-size: 24px; margin: 20px 0;'>Redis LXC</h2>
+            <h2 style='font-size: 24px; margin: 20px 0;'>Grafana LXC</h2>
 
             <p style='margin: 16px 0;'>
               <a href='https://ko-fi.com/community_scripts' target='_blank' rel='noopener noreferrer'>
@@ -28,32 +29,23 @@ resource "proxmox_virtual_environment_container" "redis" {
             </span>
           </div>
         EOT
-  tags        = ["community-script", "database"]
+  tags         = ["community-script", "monitoring", "visualization"]
+  unprivileged = true
 
   initialization {
-    hostname = "redis"
+    hostname = "grafana"
+
     ip_config {
       ipv4 {
-        address = "192.168.0.231/24"
+        address = "192.168.0.226/24"
         gateway = "192.168.0.1"
       }
     }
   }
 
-  cpu {
-    cores = 1
-  }
-
   memory {
-    dedicated = 1024
+    dedicated = 512
     swap      = 512
-  }
-
-  unprivileged = true
-
-  operating_system {
-    type             = "debian"
-    template_file_id = "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
   }
 
   console {
@@ -65,24 +57,29 @@ resource "proxmox_virtual_environment_container" "redis" {
   disk {
     mount_options = []
     datastore_id  = "local-lvm"
-    size          = 4
+    size          = 2
   }
 
   start_on_boot = true
 
   network_interface {
     name        = "eth0"
-    mac_address = "BC:24:11:0E:C7:D9"
+    mac_address = "BC:24:11:47:59:55"
   }
 
-  timeout_clone  = 1800
-  timeout_create = 1800
-  timeout_delete = 60
-  timeout_update = 1800
+  operating_system {
+    type             = "debian"
+    template_file_id = "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
+  }
 
   lifecycle {
     ignore_changes = [
       operating_system[0].template_file_id
     ]
   }
+
+  timeout_clone  = 1800
+  timeout_create = 1800
+  timeout_delete = 60
+  timeout_update = 1800
 }

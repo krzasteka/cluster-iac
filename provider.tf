@@ -9,7 +9,7 @@ terraform {
 
 provider "proxmox" {
   random_vm_ids = true
-  insecure  = true
+  insecure      = true
   ssh {
     agent    = true
     username = "terraform"
