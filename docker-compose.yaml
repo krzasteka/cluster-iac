@@ -6,3 +6,6 @@ services:
       - ~/.ssh:/root/.ssh:ro
     env_file:
       - .env
+    environment:
+      - TF_VAR_proxmox_root_api_token=${PROXMOX_ROOT_API_TOKEN}
+      - TF_VAR_samba_root_password

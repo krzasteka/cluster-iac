@@ -5,6 +5,19 @@ variable "authorized_ssh_keys" {
   sensitive   = true
 }
 
+variable "proxmox_root_username" {
+  description = "Root Proxmox username for operations restricted to root@pam."
+  type        = string
+  default     = "root@pam"
+}
+
+variable "proxmox_root_api_token" {
+  description = "API token for proxmox_root_username (pass via TF_VAR_proxmox_root_api_token)."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "node1_ip" {
   description = "Management IP used for SSH provisioning and NFS storage registration on node1."
   type        = string
@@ -33,6 +46,12 @@ variable "backup_pool_mirror_device_b" {
   description = "Second disk device used for the backup_pool ZFS mirror on node1."
   type        = string
   default     = "/dev/sdb"
+}
+
+variable "backup_exports_cidr" {
+  description = "Client CIDR allowed to mount backup_pool NFS exports."
+  type        = string
+  default     = "192.168.0.0/24"
 }
 
 variable "samba_container_vm_id" {
