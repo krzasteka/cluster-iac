@@ -21,6 +21,7 @@ resource "proxmox_virtual_environment_role" "terraform_role" {
   role_id = "TerraformRole"
 
   privileges = [
+    "Datastore.Allocate",
     "Datastore.AllocateSpace",
     "Datastore.AllocateTemplate",
     "Datastore.Audit",
