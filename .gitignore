@@ -2,5 +2,7 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.auto.tfvars
 tfplan-*
 backups/

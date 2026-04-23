@@ -41,6 +41,9 @@ resource "proxmox_virtual_environment_container" "ct105" {
         gateway = "192.168.0.1"
       }
     }
+    user_account {
+      keys = var.authorized_ssh_keys
+    }
   }
 
   memory {
@@ -74,7 +77,8 @@ resource "proxmox_virtual_environment_container" "ct105" {
 
   lifecycle {
     ignore_changes = [
-      operating_system[0].template_file_id
+      operating_system[0].template_file_id,
+      initialization[0].user_account
     ]
   }
 

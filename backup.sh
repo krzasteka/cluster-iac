@@ -37,9 +37,24 @@ log "Destination:      ./${BACKUP_DIR}/"
 
 mkdir -p "${BACKUP_DIR}"
 
-docker compose run --rm tf-ansible \
-  ansible-playbook backup.yaml \
+compose_run_args=(run --rm)
+
+# Forward ssh-agent when available so keys in the host agent can be used in-container.
+if [[ -n "${SSH_AUTH_SOCK:-}" && -S "${SSH_AUTH_SOCK}" ]]; then
+  compose_run_args+=(
+    -e "SSH_AUTH_SOCK=/ssh-agent"
+    -v "${SSH_AUTH_SOCK}:/ssh-agent"
+  )
+fi
+
+compose_run_args+=(
+  -e "ANSIBLE_SSH_ARGS=-o IgnoreUnknown=UseKeychain -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null"
+  tf-ansible
+  ansible-playbook backup.yaml
   -e "backup_ts=${BACKUP_TS}"
+)
+
+docker compose "${compose_run_args[@]}"
 
 echo ""
 echo "════════════════════════════════════════════════════"

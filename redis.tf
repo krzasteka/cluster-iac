@@ -38,6 +38,9 @@ resource "proxmox_virtual_environment_container" "redis" {
         gateway = "192.168.0.1"
       }
     }
+    user_account {
+      keys = var.authorized_ssh_keys
+    }
   }
 
   cpu {
@@ -82,7 +85,8 @@ resource "proxmox_virtual_environment_container" "redis" {
 
   lifecycle {
     ignore_changes = [
-      operating_system[0].template_file_id
+      operating_system[0].template_file_id,
+      initialization[0].user_account
     ]
   }
 }

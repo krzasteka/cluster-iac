@@ -13,6 +13,9 @@ resource "proxmox_virtual_environment_container" "prometheus_pve_exporter" {
         gateway = "192.168.0.1"
       }
     }
+    user_account {
+      keys = var.authorized_ssh_keys
+    }
   }
 
   operating_system {
