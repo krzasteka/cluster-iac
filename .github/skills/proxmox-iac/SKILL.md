@@ -45,6 +45,20 @@ docker compose run --rm tf-ansible sh
 docker compose run --rm tf-ansible terraform version
 ```
 
+## Provisioner Gotchas (Important)
+
+When using `remote-exec` from Terraform in this repo:
+
+- `agent = true` will fail unless `SSH_AUTH_SOCK` is explicitly forwarded into the `tf-ansible` container.
+- Prefer `private_key = file(...)` in `connection` blocks for deterministic non-interactive runs.
+- Default key path inside this repo's container is typically `/root/.ssh/id_ed25519` (verify with `docker compose run --rm tf-ansible sh -lc 'ls -1 /root/.ssh'`).
+- If a provisioner run fails, Terraform often taints the resource. Expect a destroy/create replacement on the next plan.
+
+Saved-plan behavior after failures:
+
+- A previously saved plan may become unusable with `Saved plan is stale` after state changes (including failed/partial applies).
+- Always generate a fresh `terraform plan -out=...` before retrying `terraform apply ...`.
+
 ---
 
 ## Workflow: Add a New LXC
@@ -208,6 +222,9 @@ Observed repo-specific lesson:
 
 - `gemini-bridge` deleted successfully only after a Terraform-managed stop (`started = false`) followed by a Terraform destroy.
 - `optmovementpt` remained stuck at the Proxmox side even after retrying deletes; in that state, Terraform cleanup may require a Proxmox-side remediation before destroy can succeed.
+- For NFS datacenter storage with current provider versions, prefer `proxmox_storage_nfs` over deprecated `proxmox_virtual_environment_storage_nfs`.
+- For NFS backup content, provider value is `backup` (equivalent to Proxmox `vzdump` backup use-case).
+- For dedicated ZFS mirror disks on `node1`, whole devices (e.g., `/dev/sda` + `/dev/sdb`) are preferred over partitions unless intentional disk sharing is required.
 
 ---
 
