@@ -2,6 +2,7 @@ resource "terraform_data" "node1_backup_host_setup" {
   triggers_replace = [
     var.node1_ip,
     var.node1_ssh_user,
+    var.backup_exports_cidr,
   ]
 
   connection {
@@ -22,10 +23,11 @@ resource "terraform_data" "node1_backup_host_setup" {
       "chmod -R 775 /backup_pool",
       "apt-get update",
       "DEBIAN_FRONTEND=noninteractive apt-get install -y nfs-kernel-server",
+      "mkdir -p /etc/exports.d",
       "cat <<'EOF' >/etc/exports.d/backup_pool.exports",
-      "/backup_pool/proxmox_backups 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)",
-      "/backup_pool/documents 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)",
-      "/backup_pool/media 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)",
+      "/backup_pool/proxmox_backups ${var.backup_exports_cidr}(rw,sync,no_subtree_check,no_root_squash)",
+      "/backup_pool/documents ${var.backup_exports_cidr}(rw,sync,no_subtree_check,no_root_squash)",
+      "/backup_pool/media ${var.backup_exports_cidr}(rw,sync,no_subtree_check,no_root_squash)",
       "EOF",
       "exportfs -ra",
     ]
@@ -38,7 +40,10 @@ resource "proxmox_storage_nfs" "backups" {
   export  = "/backup_pool/proxmox_backups"
   content = ["backup"]
 
-  depends_on = [terraform_data.node1_backup_host_setup]
+  depends_on = [
+    terraform_data.node1_backup_host_setup,
+    proxmox_acl.terraform_root,
+  ]
 }
 
 resource "proxmox_virtual_environment_container" "samba" {
@@ -85,25 +90,38 @@ resource "proxmox_virtual_environment_container" "samba" {
     name = "eth0"
   }
 
-  mount_point {
-    volume    = "/backup_pool/documents"
-    path      = "/mnt/documents"
-    read_only = false
-    shared    = true
-  }
-
-  mount_point {
-    volume    = "/backup_pool/media"
-    path      = "/mnt/media"
-    read_only = false
-    shared    = true
-  }
-
   wait_for_ip {
     ipv4 = true
   }
 
   depends_on = [terraform_data.node1_backup_host_setup]
+}
+
+resource "terraform_data" "samba_bind_mounts" {
+  triggers_replace = [
+    proxmox_virtual_environment_container.samba.id,
+    "/backup_pool/documents:/mnt/documents",
+    "/backup_pool/media:/mnt/media",
+  ]
+
+  connection {
+    type        = "ssh"
+    host        = var.node1_ip
+    user        = var.node1_ssh_user
+    private_key = file(var.provisioning_private_key_file)
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "pct stop ${var.samba_container_vm_id} >/dev/null 2>&1 || true",
+      "pct set ${var.samba_container_vm_id} -mp0 /backup_pool/documents,mp=/mnt/documents",
+      "pct set ${var.samba_container_vm_id} -mp1 /backup_pool/media,mp=/mnt/media",
+      "pct start ${var.samba_container_vm_id}",
+    ]
+  }
+
+  depends_on = [proxmox_virtual_environment_container.samba]
 }
 
 resource "terraform_data" "samba_container_provisioning" {
@@ -133,7 +151,6 @@ resource "terraform_data" "samba_container_provisioning" {
       "  guest ok = no",
       "  create mask = 0775",
       "  directory mask = 0775",
-      "",
       "[Media]",
       "  path = /mnt/media",
       "  browseable = yes",
@@ -150,5 +167,5 @@ resource "terraform_data" "samba_container_provisioning" {
     ]
   }
 
-  depends_on = [proxmox_virtual_environment_container.samba]
+  depends_on = [terraform_data.samba_bind_mounts]
 }
