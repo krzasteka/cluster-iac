@@ -71,3 +71,21 @@ variable "samba_root_password" {
   type        = string
   sensitive   = true
 }
+
+variable "browser_use_template_file_id" {
+  description = "Template used for the browser-use Ubuntu LXC."
+  type        = string
+  default     = "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
+}
+
+variable "browser_use_host_uid" {
+  description = "Host UID mapped to container UID 1000 for browser-use (set via TF_VAR_browser_use_host_uid as needed)."
+  type        = number
+  default     = 1000
+}
+
+variable "browser_use_host_user" {
+  description = "Host user whose Xauthority file is bind-mounted into browser-use."
+  type        = string
+  default     = "terraform"
+}
