@@ -291,3 +291,54 @@ Before merging infra changes:
 - Split resources by role (app, data, monitoring, etc.).
 - Add remote backend + state locking for safer multi-agent/team operations.
 - Add CI checks for `terraform fmt` and `terraform validate`.
+
+```mermaid
+    architecture-beta
+    group ext(internet)[External]
+    service internet(internet)[Internet] in ext
+    service cf(cloud)[Cloudflare DNS] in ext
+    service ddns(server)[DDNS Updater CT108] in ext
+
+    group ingress(cloud)[Ingress]
+    service npm(server)[Nginx Proxy Manager CT101] in ingress
+    service pihole(server)[Pihole CT100] in ingress
+
+    group apps(cloud)[Applications]
+    service graf(server)[Grafana CT105] in apps
+    service kuma(server)[Uptime Kuma CT106] in apps
+    service n8n(server)[N8N CT109] in apps
+    service invo(server)[Invoice Ninja CT112] in apps
+    service ops(server)[Ops Controller CT900] in apps
+
+    group monitoring(cloud)[Monitoring]
+    service prom(server)[Prometheus CT104] in monitoring
+    service pveexp(server)[PVE Exporter CT111] in monitoring
+    service pve(server)[Proxmox Hypervisor] in monitoring
+
+    group backup(cloud)[Backup]
+    service zfs(disk)[ZFS Mirror] in backup
+    service nfs(disk)[NFS Datastore] in backup
+    service samba(server)[Samba CT114] in backup
+
+    group infra(cloud)[Shared Infrastructure]
+    service redis(server)[Redis CT103] in infra
+    service docker(server)[Docker Host CT102] in infra
+
+    ddns:R --> L:cf
+    internet:B --> T:cf
+    cf:B --> T:npm
+
+    npm:R --> L:graf
+    npm:R --> L:kuma
+    npm:R --> L:n8n
+    npm:R --> L:invo
+    npm:R --> L:ops
+
+    graf:R --> L:prom
+    prom:R --> L:pveexp
+    pveexp:R --> L:pve
+
+    pve:B --> T:zfs
+    zfs:R --> L:nfs
+    nfs:R --> L:samba
+```

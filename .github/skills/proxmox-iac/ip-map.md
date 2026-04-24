@@ -2,7 +2,7 @@
 
 Subnet: `192.168.0.0/24` · Gateway: `192.168.0.1` · Static container block: `.200–.254`
 
-**Keep this file up to date when adding or removing containers. Next free IP: `192.168.0.211`**
+**Keep this file up to date when adding or removing containers. Next free IP: `192.168.0.234`**
 
 | IP Address      | CT ID | Node  | Hostname                | Notes                                                     |
 |-----------------|-------|-------|-------------------------|-----------------------------------------------------------|
@@ -19,5 +19,6 @@ Subnet: `192.168.0.0/24` · Gateway: `192.168.0.1` · Static container block: `.
 | 192.168.0.230   | 900   | node1 | ops-controller          |                                                           |
 | 192.168.0.231   | 103   | node1 | redis                   | Terraform-managed                                         |
 | 192.168.0.232   | 111   | node1 | prometheus-pve-exporter |                                                           |
+| 192.168.0.233   | 115   | node1 | browser-use             | Chrome remote debugging on port 9222                      |
 | 192.168.0.210   | 114   | node1 | samba                   | Samba file server; bind mounts /backup_pool/documents + /media |
 | 192.168.0.173   | 108   | node2 | cloudflare-ddns         | Static IP outside reserved container block                |
