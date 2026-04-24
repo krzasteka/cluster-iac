@@ -243,7 +243,105 @@
         enabled: yes
         daemon_reload: yes
 
-# ── 12. Ops Controller (custom app — manual DR step) ─────────────────────────
+# ── 12. Browser Use (Chrome + X11 passthrough) ───────────────────────────────
+- name: Install and configure browser-use runtime
+  hosts: browser_use_nodes
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tasks:
+    - name: Install browser-use runtime dependencies
+      apt:
+        name:
+          - x11-apps
+          - mesa-utils
+          - alsa-utils
+          - python3
+          - python3-pip
+          - python3-venv
+          - libgbm1
+          - libasound2
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Download Google Chrome package
+      get_url:
+        url: https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+        dest: /tmp/google-chrome-stable_current_amd64.deb
+        mode: "0644"
+
+    - name: Install Google Chrome package
+      apt:
+        deb: /tmp/google-chrome-stable_current_amd64.deb
+        state: present
+
+    - name: Ensure ubuntu config directory exists
+      file:
+        path: /home/ubuntu/.config
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Ensure ubuntu Chrome profile directory exists
+      file:
+        path: /home/ubuntu/.config/google-chrome
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Ensure ubuntu Xauthority file exists
+      file:
+        path: /home/ubuntu/.Xauthority
+        state: touch
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Set DISPLAY environment variable in /etc/environment
+      lineinfile:
+        path: /etc/environment
+        regexp: "^DISPLAY="
+        line: "DISPLAY=:0"
+        create: yes
+
+    - name: Set XAUTHORITY environment variable in /etc/environment
+      lineinfile:
+        path: /etc/environment
+        regexp: "^XAUTHORITY="
+        line: "XAUTHORITY=/home/ubuntu/.Xauthority"
+        create: yes
+
+    - name: Install Chrome launcher script
+      copy:
+        dest: /usr/local/bin/run-chrome
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          google-chrome \
+            --remote-debugging-port=9222 \
+            --remote-debugging-address=0.0.0.0 \
+            --user-data-dir=/home/ubuntu/.config/google-chrome \
+            --no-first-run \
+            --no-default-browser-check
+
+    - name: Ensure ubuntu owns runtime paths
+      file:
+        path: /home/ubuntu/.config
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        recurse: yes
+
+    - name: Ensure ubuntu owns Xauthority file
+      file:
+        path: /home/ubuntu/.Xauthority
+        owner: ubuntu
+        group: ubuntu
+
+# ── 13. Ops Controller (custom app — manual DR step) ─────────────────────────
 - name: DR notice – ops-controller requires manual restore
   hosts: ops_controller_nodes
   gather_facts: no
